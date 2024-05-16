@@ -290,7 +290,7 @@ public partial class ResultsTests
 
     [Theory]
     [MemberData(nameof(Stream_ResultHasCorrectValues_Data))]
-    public void Stream_ResultHasCorrectValues(int overload, string contentType, string fileDownloadName, bool enableRangeProcessing, DateTimeOffset lastModified, EntityTagHeaderValue entityTag)
+    public void Stream_ResultHasCorrectValues(int overload, long? fileLength, string contentType, string fileDownloadName, bool enableRangeProcessing, DateTimeOffset lastModified, EntityTagHeaderValue entityTag)
     {
         // Arrange
         var stream = new MemoryStream();
@@ -300,7 +300,8 @@ public partial class ResultsTests
         {
             0 => Results.Stream(stream, contentType, fileDownloadName, lastModified, entityTag, enableRangeProcessing),
             1 => Results.Stream(PipeReader.Create(stream), contentType, fileDownloadName, lastModified, entityTag, enableRangeProcessing),
-            _ => Results.Stream((s) => Task.CompletedTask, contentType, fileDownloadName, lastModified, entityTag)
+            2 => Results.Stream((s) => Task.CompletedTask, contentType, fileDownloadName, lastModified, entityTag),
+            _ => Results.Stream((r, c) => Task.CompletedTask, fileLength,  contentType, fileDownloadName, lastModified, entityTag, enableRangeProcessing),
         };
 
         // Assert
@@ -316,7 +317,7 @@ public partial class ResultsTests
                 Assert.Equal(entityTag, fileStreamResult.EntityTag);
                 break;
 
-            default:
+            case 2:
                 var pushStreamResult = result as PushStreamHttpResult;
                 Assert.Equal(contentType ?? "application/octet-stream", pushStreamResult.ContentType);
                 Assert.Equal(fileDownloadName, pushStreamResult.FileDownloadName);
@@ -324,18 +325,30 @@ public partial class ResultsTests
                 Assert.Equal(lastModified, pushStreamResult.LastModified);
                 Assert.Equal(entityTag, pushStreamResult.EntityTag);
                 break;
+
+            default:
+                var partialPushStreamResult = result as PushStreamHttpResult;
+                Assert.Equal(contentType ?? "application/octet-stream", partialPushStreamResult.ContentType);
+                Assert.Equal(fileLength, partialPushStreamResult.FileLength);
+                Assert.Equal(fileDownloadName, partialPushStreamResult.FileDownloadName);
+                Assert.Equal(enableRangeProcessing, partialPushStreamResult.EnableRangeProcessing);
+                Assert.Equal(lastModified, partialPushStreamResult.LastModified);
+                Assert.Equal(entityTag, partialPushStreamResult.EntityTag);
+                break;
         }
 
     }
 
     public static IEnumerable<object[]> Stream_ResultHasCorrectValues_Data => new List<object[]>
     {
-        new object[] { 0, "text/plain", "testfile", true, new DateTimeOffset(2022, 1, 1, 0, 0, 1, TimeSpan.FromHours(-8)), EntityTagHeaderValue.Any },
-        new object[] { 0, default(string), default(string), default(bool), default(DateTimeOffset?), default(EntityTagHeaderValue) },
-        new object[] { 1, "text/plain", "testfile", true, new DateTimeOffset(2022, 1, 1, 0, 0, 1, TimeSpan.FromHours(-8)), EntityTagHeaderValue.Any },
-        new object[] { 1, default(string), default(string), default(bool), default(DateTimeOffset?), default(EntityTagHeaderValue) },
-        new object[] { 2, "text/plain", "testfile", true, new DateTimeOffset(2022, 1, 1, 0, 0, 1, TimeSpan.FromHours(-8)), EntityTagHeaderValue.Any },
-        new object[] { 2, default(string), default(string), default(bool), default(DateTimeOffset?), default(EntityTagHeaderValue) }
+        new object[] { 0, null, "text/plain", "testfile", true, new DateTimeOffset(2022, 1, 1, 0, 0, 1, TimeSpan.FromHours(-8)), EntityTagHeaderValue.Any },
+        new object[] { 0, null, default(string), default(string), default(bool), default(DateTimeOffset?), default(EntityTagHeaderValue) },
+        new object[] { 1, null, "text/plain", "testfile", true, new DateTimeOffset(2022, 1, 1, 0, 0, 1, TimeSpan.FromHours(-8)), EntityTagHeaderValue.Any },
+        new object[] { 1, null, default(string), default(string), default(bool), default(DateTimeOffset?), default(EntityTagHeaderValue) },
+        new object[] { 2, null, "text/plain", "testfile", true, new DateTimeOffset(2022, 1, 1, 0, 0, 1, TimeSpan.FromHours(-8)), EntityTagHeaderValue.Any },
+        new object[] { 2, null, default(string), default(string), default(bool), default(DateTimeOffset?), default(EntityTagHeaderValue) },
+        new object[] { 3, null, "text/plain", "testfile", true, new DateTimeOffset(2022, 1, 1, 0, 0, 1, TimeSpan.FromHours(-8)), EntityTagHeaderValue.Any },
+        new object[] { 3, null, default(string), default(string), default(bool), default(DateTimeOffset?), default(EntityTagHeaderValue) }
     };
 
     [Fact]
@@ -1686,6 +1699,7 @@ public partial class ResultsTests
         (() => Results.Problem(new()), typeof(ProblemHttpResult)),
         (() => Results.Stream(new MemoryStream(), null, null, null, null, false), typeof(FileStreamHttpResult)),
         (() => Results.Stream(s => Task.CompletedTask, null, null, null, null), typeof(PushStreamHttpResult)),
+        (() => Results.Stream((r, c) => Task.CompletedTask, null, null, null, null, null, false), typeof(PushStreamHttpResult)),
         (() => Results.Text("content", null, null), typeof(ContentHttpResult)),
         (() => Results.Text("content", null, null, null), typeof(ContentHttpResult)),
         (() => Results.Redirect("/path", false, false), typeof(RedirectHttpResult)),

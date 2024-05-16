@@ -28,6 +28,39 @@ public class PushStreamResultTests
     }
 
     [Fact]
+    public async Task PushStreamResultsSupportsRange()
+    {
+        var data = Encoding.UTF8.GetBytes("Hello World").AsMemory();
+        var result = new PushStreamHttpResult(
+            async (range, context) =>
+            {
+                var slice = range is null ? data : data[(int)range.From!.Value..(int)(range.To!.Value + 1)];
+                await context.Response.Body.WriteAsync(slice);
+            },
+            contentType: null)
+        {
+            EnableRangeProcessing = true,
+            FileLength = data.Length,
+        };
+
+        var httpContext = new DefaultHttpContext
+        {
+            RequestServices = new ServiceCollection().AddLogging().BuildServiceProvider()
+        };
+        httpContext.Request.Method = "GET";
+        httpContext.Request.Headers.Add(HeaderNames.Range, "bytes=1-6");
+        var ms = new MemoryStream();
+        httpContext.Response.Body = ms;
+
+        await result.ExecuteAsync(httpContext);
+
+        Assert.Equal("ello W", Encoding.UTF8.GetString(ms.ToArray()));
+        Assert.Equal("application/octet-stream", result.ContentType);
+        Assert.Equal(6, httpContext.Response.Headers.ContentLength);
+        Assert.Equal("bytes 1-6/11", httpContext.Response.Headers.ContentRange);
+    }
+
+    [Fact]
     public void Constructor_SetsContentTypeAndParameters()
     {
         // Arrange
