@@ -13,7 +13,18 @@ namespace Microsoft.AspNetCore.Http.HttpResults;
 /// </summary>
 public sealed class PushStreamHttpResult : IResult, IFileHttpResult, IContentTypeHttpResult
 {
-    private readonly Func<Stream, Task> _streamWriterCallback;
+    private readonly Func<RangeItemHeaderValue?, HttpContext, Task> _callback;
+
+    /// <summary>
+    /// Creates a new <see cref="PushStreamHttpResult"/> instance with
+    /// the provided <paramref name="callback"/> and the provided <paramref name="contentType"/>.
+    /// </summary>
+    /// <param name="callback">The stream writer callback.</param>
+    /// <param name="contentType">The Content-Type header of the response.</param>
+    internal PushStreamHttpResult(Func<RangeItemHeaderValue?, HttpContext, Task> callback, string? contentType)
+        : this(callback, contentType, fileDownloadName: null, enableRangeProcessing: false)
+    {
+    }
 
     /// <summary>
     /// Creates a new <see cref="PushStreamHttpResult"/> instance with
@@ -38,28 +49,28 @@ public sealed class PushStreamHttpResult : IResult, IFileHttpResult, IContentTyp
         Func<Stream, Task> streamWriterCallback,
         string? contentType,
         string? fileDownloadName)
-        : this(streamWriterCallback, contentType, fileDownloadName, enableRangeProcessing: false)
+        : this((range, httpContext) => streamWriterCallback(httpContext.Response.Body), contentType, fileDownloadName, enableRangeProcessing: false)
     {
     }
 
     /// <summary>
     /// Creates a new <see cref="PushStreamHttpResult"/> instance with the provided values.
     /// </summary>
-    /// <param name="streamWriterCallback">The stream writer callback.</param>
+    /// <param name="callback">The stream writer callback.</param>
     /// <param name="contentType">The Content-Type header of the response.</param>
     /// <param name="fileDownloadName">The suggested file name.</param>
     /// <param name="enableRangeProcessing">Set to <c>true</c> to enable range requests processing.</param>
     /// <param name="lastModified">The <see cref="DateTimeOffset"/> of when the file was last modified.</param>
     /// <param name="entityTag">The <see cref="EntityTagHeaderValue"/> associated with the file.</param>
     internal PushStreamHttpResult(
-        Func<Stream, Task> streamWriterCallback,
+        Func<RangeItemHeaderValue?, HttpContext, Task> callback,
         string? contentType,
         string? fileDownloadName,
         bool enableRangeProcessing,
         DateTimeOffset? lastModified = null,
         EntityTagHeaderValue? entityTag = null)
     {
-        _streamWriterCallback = streamWriterCallback;
+        _callback = callback;
         ContentType = contentType ?? "application/octet-stream";
         FileDownloadName = fileDownloadName;
         EnableRangeProcessing = enableRangeProcessing;
@@ -118,6 +129,6 @@ public sealed class PushStreamHttpResult : IResult, IFileHttpResult, IContentTyp
 
         return completed ?
             Task.CompletedTask :
-            _streamWriterCallback(httpContext.Response.Body);
+            _callback(range, httpContext);
     }
 }
